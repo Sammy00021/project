@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>University Shop Inventory Tracker</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --gold: #DAA520;
+      --green: #2E8B57;
+      --red: #B22222;
+      --bg: #f9f9f9;
+      --text: #333;
+    }
+    .dark-mode {
+      --bg: #1e1e1e;
+      --text: #000000;
+      --gold: #e0c068;
+      --green: #3aa973;
+      --red: #e04c4c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: var(--bg);
+      color: var(--text);
+      transition: background-color 0.3s, color 0.3s;
+    }
+    .container {
+      width: 90%; max-width: 900px;
+      margin: 60px auto 40px;
+      background-color: var(--bg);
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      transition: background-color 0.3s;
+    }
+    h1 {
+      text-align: center;
+      color: var(--gold);
+      margin-bottom: 10px;
+    }
+    /* Toggle switch */
+    #themeToggle {
+      display: none;
+    }
+    #themeLabel {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      font-size: 1.8rem;
+      cursor: pointer;
+      transition: transform 0.5s;
+      user-select: none;
+    }
+    #themeToggle:checked + #themeLabel {
+      transform: rotate(360deg);
+    }
+    form, .filters {
+      display: flex; flex-wrap: wrap; gap: 10px;
+      margin-bottom: 20px;
+    }
+    form input, form select, form button,
+    .filters input, .filters select {
+      flex: 1 1 150px;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      background-color: white;
+      color: var(--text);
+      transition: background-color 0.3s, color 0.3s;
+    }
+    form button {
+      background-color: var(--green);
+      color: white;
+      border: none;
+      cursor: pointer;
+      flex: 1 1 100px;
+    }
+    table {
+      width: 100%; border-collapse: collapse; margin-bottom: 20px;
+    }
+    th, td {
+      border: 1px solid #ccc; padding: 10px; text-align: center;
+    }
+    th {
+      background-color: var(--gold); color: white;
+    }
+    .low-stock {
+      background-color: var(--red); color: white;
+    }
+    button.action-btn {
+      border: none; padding: 5px 10px; margin: 0 2px; border-radius: 4px; cursor: pointer;
+    }
+    button.sell {
+      background-color: var(--green); color: white;
+    }
+    button.remove {
+      background-color: var(--red); color: white;
+    }
+    canvas { max-width: 100%; height: auto; }
+    @media (max-width: 600px) {
+      form, .filters { flex-direction: column; }
+      form button, .filters input, .filters select { flex: 1 1 auto; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Dark Mode Toggle -->
+  <input type="checkbox" id="themeToggle">
+  <label for="themeToggle" id="themeLabel">☀️</label>
+
+  <div class="container">
+    <h1>University Stationery Shop Inventory</h1>
+    <!-- Add Item Form -->
+    <form id="itemForm">
+      <input type="text" id="itemName" placeholder="Item Name" required>
+      <input type="text" id="itemCategory" placeholder="Category" required>
+      <input type="number" id="itemStock" placeholder="Stock Quantity" min="1" required>
+      <button type="submit">Add Item</button>
+    </form>
+
+    <!-- Filters -->
+    <div class="filters">
+      <input type="text" id="searchInput" placeholder="Search items...">
+      <select id="categoryFilter">
+        <option value="">All Categories</option>
+      </select>
+    </div>
+
+    <!-- Inventory Table -->
+    <table>
+      <thead>
+        <tr>
+          <th>Item</th><th>Category</th><th>Stock</th><th>Sold</th><th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="inventoryTable"></tbody>
+    </table>
+
+    <!-- Sales Chart -->
+    <h2 style="text-align:center;">Top Selling Items</h2>
+    <canvas id="salesChart"></canvas>
+  </div>
+
+  <script>
+    // Theme Management
+    const body = document.body;
+    const themeToggle = document.getElementById('themeToggle');
+    const themeLabel = document.getElementById('themeLabel');
+    let darkMode = JSON.parse(localStorage.getItem('darkMode')) || false;
+    function applyTheme() {
+      if (darkMode) {
+        body.classList.add('dark-mode');
+        themeToggle.checked = true;
+        themeLabel.textContent = '🌙';
+      } else {
+        body.classList.remove('dark-mode');
+        themeToggle.checked = false;
+        themeLabel.textContent = '☀️';
+      }
+      localStorage.setItem('darkMode', JSON.stringify(darkMode));
+    }
+    themeLabel.addEventListener('click', () => { darkMode = !darkMode; applyTheme(); });
+    applyTheme();
+
+    // Inventory Management
+    let inventory = JSON.parse(localStorage.getItem('inventory')) || [];
+    const form = document.getElementById('itemForm');
+    const table = document.getElementById('inventoryTable');
+    const searchInput = document.getElementById('searchInput');
+    const categoryFilter = document.getElementById('categoryFilter');
+    const ctx = document.getElementById('salesChart').getContext('2d');
+    let salesChart;
+
+    function saveInventory() {
+      localStorage.setItem('inventory', JSON.stringify(inventory));
+    }
+    function getCategories() {
+      return [...new Set(inventory.map(item => item.category))];
+    }
+    function populateCategoryFilter() {
+      const cats = getCategories();
+      categoryFilter.innerHTML = '<option value="">All Categories</option>' +
+        cats.map(cat => `<option value="${cat}">${cat}</option>`).join('');
+    }
+    function filterInventory() {
+      const term = searchInput.value.toLowerCase();
+      const cat = categoryFilter.value;
+      return inventory.filter((item) =>
+        item.name.toLowerCase().includes(term) && (cat ? item.category === cat : true)
+      );
+    }
+    function renderInventory() {
+      table.innerHTML = '';
+      filterInventory().forEach((item, idx) => {
+        const row = document.createElement('tr');
+        if (item.stock <= 5) row.classList.add('low-stock');
+        row.innerHTML = `
+          <td>${item.name}</td>
+          <td>${item.category}</td>
+          <td>${item.stock}</td>
+          <td>${item.sold}</td>
+          <td>
+            <button class="action-btn sell" onclick="sellItem(${idx})">Sell</button>
+            <button class="action-btn remove" onclick="removeItem(${idx})">Remove</button>
+          </td>
+        `;
+        table.appendChild(row);
+      });
+      populateCategoryFilter(); updateChart();
+    }
+    function sellItem(index) {
+      if (inventory[index].stock > 0) {
+        inventory[index].stock--; inventory[index].sold++;
+        saveInventory(); renderInventory();
+      }
+    }
+    function removeItem(index) {
+      inventory.splice(index, 1);
+      saveInventory(); renderInventory();
+    }
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const name = document.getElementById('itemName').value.trim();
+      const category = document.getElementById('itemCategory').value.trim();
+      const stock = parseInt(document.getElementById('itemStock').value, 10);
+      inventory.push({ name, category, stock, sold: 0 });
+      saveInventory(); form.reset(); renderInventory();
+    });
+    searchInput.addEventListener('input', renderInventory);
+    categoryFilter.addEventListener('change', renderInventory);
+    function updateChart() {
+      const top = [...inventory].sort((a,b) => b.sold - a.sold).slice(0,5);
+      const labels = top.map(i => i.name);
+      const data = top.map(i => i.sold);
+      if (salesChart) {
+        salesChart.data.labels = labels;
+        salesChart.data.datasets[0].data = data;
+        salesChart.update();
+      } else {
+        salesChart = new Chart(ctx, {
+          type: 'bar',
+          data: { labels, datasets: [{ label: 'Items Sold', data, backgroundColor: 'rgba(46, 139, 87, 0.7)' }] },
+          options: { responsive: true, scales: { y: { beginAtZero: true } } }
+        });
+      }
+    }
+    // Initial render
+    renderInventory();
+  </script>
+</body>
+</html>
