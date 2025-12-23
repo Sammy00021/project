@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>University Shop Inventory Tracker</title>
+
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    :root{
+      --gold: #DAA520;
+      --green: #2E8B57;
+      --red: #B22222;
+      --bg: #f7f7f8;
+      --card: #ffffff;
+      --text: #222;
+      --muted: #666;
+      --radius: 10px;
+    }
+    .dark {
+      --bg: #121217;
+      --card: #1b1b1f;
+      --text: #e6e6e6;
+      --muted: #a7a7a7;
+      --gold: #e0c068;
+      --green: #3aa973;
+      --red: #e04c4c;
+    }
+
+    *{box-sizing: border-box}
+    body{
+      margin:0;
+      font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      background:var(--bg);
+      color:var(--text);
+      -webkit-font-smoothing:antialiased;
+      -moz-osx-font-smoothing:grayscale;
+      padding:28px;
+    }
+
+    .app {
+      max-width:1100px;
+      margin:0 auto;
+      background:var(--card);
+      padding:20px;
+      border-radius:var(--radius);
+      box-shadow:0 6px 24px rgba(0,0,0,0.07);
+    }
+
+    header{
+      display:flex;
+      gap:12px;
+      align-items:center;
+      justify-content:space-between;
+      margin-bottom:14px;
+    }
+    h1{
+      margin:0;
+      font-size:1.25rem;
+      color:var(--gold);
+    }
+    .controls {
+      display:flex;
+      gap:8px;
+      align-items:center;
+    }
+    .btn{
+      padding:8px 12px;
+      border-radius:8px;
+      border:0;
+      cursor:pointer;
+      background:var(--green);
+      color:white;
+      font-weight:600;
+    }
+    .btn.ghost { background:transparent; color:var(--text); border:1px solid rgba(0,0,0,0.06); }
+    .btn.warn { background:var(--red); }
+
+    .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+
+    form#addForm{
+      display:flex;
+      gap:8px;
+      align-items:center;
+      margin-bottom:12px;
+      flex-wrap:wrap;
+    }
+    form input, form select {
+      padding:8px 10px;
+      border-radius:8px;
+      border:1px solid #d6d6d6;
+      background:transparent;
+      min-width:140px;
+    }
+    form button { min-width:110px; }
+
+    .filters {
+      display:flex;
+      gap:8px;
+      margin-bottom:12px;
+      flex-wrap:wrap;
+    }
+    .filters input, .filters select {
+      padding:8px 10px;
+      border-radius:8px;
+      border:1px solid #d6d6d6;
+      min-width:150px;
+    }
+
+    table {
+      width:100%;
+      border-collapse:collapse;
+      margin-bottom:12px;
+    }
+    th, td {
+      padding:10px;
+      border-bottom:1px solid #eee;
+      text-align:left;
+      font-size:0.95rem;
+    }
+    th { color:var(--muted); font-weight:700; font-size:0.85rem; text-transform:uppercase; }
+    tr.low { background: linear-gradient(90deg, rgba(255,0,0,0.03), transparent); }
+
+    .actions { display:flex; gap:6px; }
+    .small { padding:6px 8px; font-size:0.85rem; border-radius:6px; }
+
+    .chart-wrap { margin-top:8px; }
+    canvas { width:100% !important; max-height:320px; }
+
+    .footer {
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:10px;
+      margin-top:10px;
+      font-size:0.9rem;
+      color:var(--muted);
+    }
+
+    /* Modal */
+    .modal-backdrop {
+      position:fixed; inset:0; display:none; align-items:center; justify-content:center;
+      background:rgba(0,0,0,0.45);
+    }
+    .modal {
+      background:var(--card); padding:18px; border-radius:10px; width:480px; max-width:95%;
+      box-shadow:0 10px 40px rgba(0,0,0,0.25);
+    }
+    .modal.show { display:flex; }
+
+    /* Responsive */
+    @media (max-width:700px){
+      form input, form select { min-width:100%; }
+      .filters input, .filters select { min-width:100%; }
+      header { flex-direction:column; align-items:flex-start; gap:10px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app" id="app">
+    <header>
+      <div>
+        <h1>University Shop Inventory Tracker</h1>
+        <div style="font-size:0.85rem; color:var(--muted)">Lightweight inventory & sales tracker — local-only</div>
+      </div>
+
+      <div class="controls" role="toolbar" aria-label="toolbar">
+        <button id="toggleTheme" class="btn ghost" aria-pressed="false" title="Toggle theme">Toggle Theme</button>
+        <button id="exportBtn" class="btn">Export CSV</button>
+        <label class="btn ghost" style="display:inline-flex; align-items:center; gap:8px; cursor:pointer;">
+          Import
+          <input id="importFile" type="file" accept=".json,.csv" style="display:none">
+        </label>
+        <button id="clearBtn" class="btn warn">Clear All</button>
+      </div>
+    </header>
+
+    <!-- Add form -->
+    <form id="addForm" aria-label="Add new item">
+      <input id="name" type="text" placeholder="Item name" required aria-label="Item name">
+      <input id="category" type="text" placeholder="Category" required aria-label="Category">
+      <input id="stock" type="number" placeholder="Stock" min="1" value="1" required aria-label="Stock quantity">
+      <button type="submit" class="btn">Add Item</button>
+    </form>
+
+    <!-- Filters -->
+    <div class="filters" role="search" aria-label="Filters">
+      <input id="search" type="search" placeholder="Search items..." aria-label="Search items">
+      <select id="categoryFilter" aria-label="Filter by category">
+        <option value="">All Categories</option>
+      </select>
+    </div>
+
+    <!-- Inventory Table -->
+    <div style="overflow:auto">
+      <table aria-live="polite">
+        <thead>
+          <tr><th>Item</th><th>Category</th><th style="width:110px">Stock</th><th style="width:110px">Sold</th><th style="width:170px">Actions</th></tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+
+    <!-- Charts -->
+    <div class="chart-wrap">
+      <h2 style="margin:0 0 8px 0; font-size:1rem; color:var(--muted)">Top Selling Items</h2>
+      <canvas id="salesChart" aria-label="Sales chart" role="img"></canvas>
+    </div>
+
+    <div class="footer">
+      <div id="stats">0 items • 0 total stock • 0 total sold</div>
+      <div style="color:var(--muted)">Made for finals — localStorage</div>
+    </div>
+  </div>
+
+  <!-- Edit Modal -->
+  <div id="modalBackdrop" class="modal-backdrop" role="dialog" aria-modal="true" aria-hidden="true">
+    <form id="editForm" class="modal" role="form" aria-label="Edit item">
+      <h3 style="margin-top:0">Edit Item</h3>
+      <input id="editName" required placeholder="Item name">
+      <input id="editCategory" required placeholder="Category">
+      <input id="editStock" type="number" min="0" required placeholder="Stock">
+      <div style="display:flex; gap:8px; margin-top:10px; justify-content:flex-end;">
+        <button type="button" id="closeModal" class="btn ghost">Cancel</button>
+        <button type="submit" class="btn">Save</button>
+      </div>
+    </form>
+  </div>
+
+  <script type="module">
+    // ========== Utilities ==========
+    const $ = (sel) => document.querySelector(sel);
+    const qs = (sel, root=document) => root.querySelector(sel);
+    const qsa = (sel, root=document) => Array.from(root.querySelectorAll(sel));
+    const debounce = (fn, wait=250) => {
+      let t;
+      return (...args) => { clearTimeout(t); t = setTimeout(()=>fn(...args), wait); };
+    };
+    const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,8);
+
+    // ========== Storage ==========
+    const STORAGE_KEY = 'uni_inventory_v1';
+    const THEME_KEY = 'uni_theme_v1';
+
+    function loadInventory(){
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        return raw ? JSON.parse(raw) : [];
+      } catch(e) {
+        console.error('Failed to parse inventory', e);
+        return [];
+      }
+    }
+    function saveInventory(items){
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+    }
+
+    // ========== State ==========
+    let inventory = loadInventory();
+    let chart; // Chart.js instance
+    let editingId = null;
+
+    // ========== DOM refs ==========
+    const tableBody = $('#tableBody');
+    const addForm = $('#addForm');
+    const nameInput = $('#name');
+    const categoryInput = $('#category');
+    const stockInput = $('#stock');
+    const searchInput = $('#search');
+    const categoryFilter = $('#categoryFilter');
+    const statsEl = $('#stats');
+    const exportBtn = $('#exportBtn');
+    const importFile = $('#importFile');
+    const clearBtn = $('#clearBtn');
+    const toggleThemeBtn = $('#toggleTheme');
+
+    // Modal refs
+    const modalBackdrop = $('#modalBackdrop');
+    const editForm = $('#editForm');
+    const editName = $('#editName');
+    const editCategory = $('#editCategory');
+    const editStock = $('#editStock');
+    const closeModalBtn = $('#closeModal');
+
+    // ========== Theme ==========
+    function applyTheme(dark){
+      document.documentElement.classList.toggle('dark', !!dark);
+      toggleThemeBtn.setAttribute('aria-pressed', String(!!dark));
+      localStorage.setItem(THEME_KEY, JSON.stringify(!!dark));
+      toggleThemeBtn.textContent = dark ? 'Light' : 'Dark';
+    }
+    // init theme
+    applyTheme(JSON.parse(localStorage.getItem(THEME_KEY)) || false);
+    toggleThemeBtn.addEventListener('click', () => applyTheme(!document.documentElement.classList.contains('dark')));
+
+    // ========== Rendering ==========
+    function getCategories(){
+      const cats = Array.from(new Set(inventory.map(i => i.category).filter(Boolean)));
+      cats.sort((a,b)=>a.localeCompare(b));
+      return cats;
+    }
+
+    function populateCategoryFilter(){
+      const cats = getCategories();
+      categoryFilter.innerHTML = `<option value="">All Categories</option>`;
+      cats.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c;
+        opt.textContent = c;
+        categoryFilter.appendChild(opt);
+      });
+    }
+
+    function filteredInventory(){
+      const term = searchInput.value.trim().toLowerCase();
+      const cat = categoryFilter.value;
+      return inventory.filter(item => {
+        const matchesTerm = term === '' || item.name.toLowerCase().includes(term) || item.category.toLowerCase().includes(term);
+        const matchesCat = !cat || item.category === cat;
+        return matchesTerm && matchesCat;
+      });
+    }
+
+    function renderTable(){
+      tableBody.innerHTML = '';
+      const rows = filteredInventory();
+      rows.forEach(item => {
+        const tr = document.createElement('tr');
+        if (item.stock <= 5) tr.classList.add('low');
+
+        // Name cell
+        const nameTd = document.createElement('td');
+        nameTd.textContent = item.name;
+        tr.appendChild(nameTd);
+
+        // Category
+        const catTd = document.createElement('td');
+        catTd.textContent = item.category;
+        tr.appendChild(catTd);
+
+        // Stock
+        const stockTd = document.createElement('td');
+        stockTd.textContent = item.stock;
+        tr.appendChild(stockTd);
+
+        // Sold
+        const soldTd = document.createElement('td');
+        soldTd.textContent = item.sold || 0;
+        tr.appendChild(soldTd);
+
+        // Actions
+        const actionsTd = document.createElement('td');
+        const actionsWrap = document.createElement('div');
+        actionsWrap.className = 'actions';
+
+        // Sell button
+        const sellBtn = document.createElement('button');
+        sellBtn.className = 'small small-sell';
+        sellBtn.textContent = 'Sell';
+        sellBtn.title = 'Sell 1 unit';
+        sellBtn.addEventListener('click', () => sellItem(item.id));
+        actionsWrap.appendChild(sellBtn);
+
+        // Edit button
+        const editBtn = document.createElement('button');
+        editBtn.className = 'small';
+        editBtn.textContent = 'Edit';
+        editBtn.addEventListener('click', () => openEditModal(item.id));
+        actionsWrap.appendChild(editBtn);
+
+        // Remove button
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'small';
+        removeBtn.textContent = 'Remove';
+        removeBtn.addEventListener('click', () => removeItem(item.id));
+        actionsWrap.appendChild(removeBtn);
+
+        actionsTd.appendChild(actionsWrap);
+        tr.appendChild(actionsTd);
+
+        tableBody.appendChild(tr);
+      });
+
+      populateCategoryFilter();
+      updateStats();
+      updateChart();
+    }
+
+    // ========== Actions ==========
+    function addItem(name, category, stock){
+      name = String(name).trim();
+      category = String(category).trim();
+      stock = Number(stock) || 0;
+      if (!name || !category || stock < 0) return false;
+      const item = { id: uid(), name, category, stock: Math.max(0, Math.floor(stock)), sold: 0 };
+      inventory.unshift(item);
+      saveInventory(inventory);
+      renderTable();
+      return true;
+    }
+
+    function sellItem(id){
+      const idx = inventory.findIndex(i => i.id === id);
+      if (idx === -1) return;
+      if (inventory[idx].stock <= 0) return;
+      inventory[idx].stock -= 1;
+      inventory[idx].sold = (inventory[idx].sold || 0) + 1;
+      saveInventory(inventory);
+      renderTable();
+    }
+
+    function removeItem(id){
+      const item = inventory.find(i => i.id===id);
+      if (!item) return;
+      if (!confirm(`Remove "${item.name}"? This action cannot be undone.`)) return;
+      inventory = inventory.filter(i => i.id !== id);
+      saveInventory(inventory);
+      renderTable();
+    }
+
+    // Edit
+    function openEditModal(id){
+      const item = inventory.find(i => i.id === id);
+      if (!item) return;
+      editingId = id;
+      editName.value = item.name;
+      editCategory.value = item.category;
+      editStock.value = item.stock;
+      modalBackdrop.style.display = 'flex';
+      modalBackdrop.setAttribute('aria-hidden','false');
+      editName.focus();
+    }
+    function closeEditModal(){
+      editingId = null;
+      modalBackdrop.style.display = 'none';
+      modalBackdrop.setAttribute('aria-hidden','true');
+    }
+
+    // ========== Chart ==========
+    function updateChart(){
+      const ctx = document.getElementById('salesChart').getContext('2d');
+      const top = [...inventory].sort((a,b)=> (b.sold||0) - (a.sold||0)).slice(0,6);
+      const labels = top.map(i => i.name);
+      const data = top.map(i => i.sold || 0);
+
+      if (!chart){
+        chart = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels,
+            datasets: [{
+              label: 'Units sold',
+              data,
+              backgroundColor: Array(data.length).fill(undefined) // Chart will apply defaults
+            }]
+          },
+          options: {
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true, ticks: { precision:0 } } }
+          }
+        });
+      } else {
+        chart.data.labels = labels;
+        chart.data.datasets[0].data = data;
+        chart.update();
+      }
+    }
+
+    // ========== Stats ==========
+    function updateStats(){
+      const totalItems = inventory.length;
+      const totalStock = inventory.reduce((s,i)=> s + (Number(i.stock)||0), 0);
+      const totalSold = inventory.reduce((s,i)=> s + (Number(i.sold)||0), 0);
+      statsEl.textContent = `${totalItems} items • ${totalStock} total stock • ${totalSold} total sold`;
+    }
+
+    // ========== Events ==========
+    addForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const name = nameInput.value.trim();
+      const category = categoryInput.value.trim();
+      const stock = Number(stockInput.value);
+      if (!name || !category || Number.isNaN(stock) || stock < 0) {
+        alert('Please provide valid item name, category and stock.');
+        return;
+      }
+      addItem(name, category, stock);
+      addForm.reset();
+      nameInput.focus();
+    });
+
+    // search & category filter (debounced)
+    const onSearch = debounce(() => renderTable(), 220);
+    searchInput.addEventListener('input', onSearch);
+    categoryFilter.addEventListener('change', renderTable);
+
+    // edit modal events
+    closeModalBtn.addEventListener('click', (e) => { e.preventDefault(); closeEditModal(); });
+    modalBackdrop.addEventListener('click', (e) => { if (e.target === modalBackdrop) closeEditModal(); });
+    editForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (!editingId) return closeEditModal();
+      const item = inventory.find(i => i.id === editingId);
+      if (!item) return closeEditModal();
+      const newName = editName.value.trim();
+      const newCat = editCategory.value.trim();
+      const newStock = Number(editStock.value);
+      if (!newName || !newCat || Number.isNaN(newStock) || newStock < 0) {
+        alert('Please provide valid values.');
+        return;
+      }
+      item.name = newName;
+      item.category = newCat;
+      item.stock = Math.floor(newStock);
+      saveInventory(inventory);
+      renderTable();
+      closeEditModal();
+    });
+
+    // Export CSV
+    function toCSV(items){
+      const rows = [['id','name','category','stock','sold']];
+      items.forEach(i => rows.push([i.id, i.name, i.category, i.stock, i.sold||0]));
+      return rows.map(r => r.map(cell => `"${String(cell).replace(/"/g,'""')}"`).join(',')).join('\n');
+    }
+    exportBtn.addEventListener('click', () => {
+      const csv = toCSV(inventory);
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `inventory_${new Date().toISOString().slice(0,10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    });
+
+    // Import (JSON or CSV)
+    importFile.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const txt = await file.text();
+      try {
+        if (file.name.toLowerCase().endsWith('.json')) {
+          const parsed = JSON.parse(txt);
+          if (!Array.isArray(parsed)) throw new Error('JSON must be an array of items');
+          // Normalize minimal fields
+          const parsedItems = parsed.map(it => ({
+            id: it.id || uid(),
+            name: String(it.name||'Unknown'),
+            category: String(it.category||'Uncategorized'),
+            stock: Number(it.stock) || 0,
+            sold: Number(it.sold) || 0
+          }));
+          inventory = parsedItems;
+          saveInventory(inventory);
+          renderTable();
+          alert('Imported JSON successfully.');
+        } else if (file.name.toLowerCase().endsWith('.csv')) {
+          const lines = txt.split(/\r?\n/).filter(Boolean);
+          const parsed = lines.slice(1).map(line => {
+            // naive CSV parse that handles quoted fields
+            const cells = line.match(/("([^"]|"")*"|[^,]+)/g).map(c => c.replace(/^"|"$/g,'').replace(/""/g,'"'));
+            return {
+              id: cells[0] || uid(),
+              name: cells[1] || 'Unknown',
+              category: cells[2] || 'Uncategorized',
+              stock: Number(cells[3]) || 0,
+              sold: Number(cells[4]) || 0
+            };
+          });
+          inventory = parsed;
+          saveInventory(inventory);
+          renderTable();
+          alert('Imported CSV successfully.');
+        } else {
+          alert('Unsupported file type (use .json or .csv).');
+        }
+      } catch(err){
+        console.error(err);
+        alert('Failed to import file: ' + err.message);
+      } finally {
+        importFile.value = '';
+      }
+    });
+
+    // Clear all
+    clearBtn.addEventListener('click', () => {
+      if (!confirm('Clear entire inventory? This cannot be undone.')) return;
+      inventory = [];
+      saveInventory(inventory);
+      renderTable();
+    });
+
+    // Shortcuts: keyboard N to focus add name
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'n' && !e.metaKey && !e.ctrlKey && document.activeElement.tagName !== 'INPUT') {
+        e.preventDefault();
+        nameInput.focus();
+      }
+    });
+
+    // ========== Init ==========
+    renderTable();
+
+    // If inventory empty, pre-seed with an example (optional)
+    if (inventory.length === 0) {
+      // Uncomment to seed example items on first load
+      // addItem('Notebook', 'Stationery', 30);
+      // addItem('Pen', 'Stationery', 100);
+      // addItem('Charger', 'Electronics', 12);
+      // addItem('Water Bottle', 'Accessories', 20);
+    }
+  </script>
+</body>
+</html>
